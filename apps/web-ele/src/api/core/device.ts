@@ -9,9 +9,9 @@ export interface Page<T> {
 }
 
 export interface Device {
-  id: number;
-  create_time: string;
-  update_time: string;
+  id: null | number;
+  create_time: null | string;
+  update_time: null | string;
   mac: string;
   voice: string;
   role: string;
@@ -29,4 +29,12 @@ export async function getAllDevicesApi(page: number, size: number) {
 
 export async function updateDeviceApi(device: Device) {
   return requestClient.post<boolean>('/device/update', device);
+}
+
+export async function addDeviceApi(device: Device) {
+  return requestClient.post<Device>('/device/add', device);
+}
+
+export async function deleteDeviceApi(id: number) {
+  return requestClient.post<boolean>('/device/delete', { id });
 }

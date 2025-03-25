@@ -7,6 +7,7 @@ import { onMounted, reactive, ref } from 'vue';
 
 import { EllipsisText, Page, useVbenDrawer } from '@vben/common-ui';
 
+import { Delete, Edit, Plus } from '@element-plus/icons-vue';
 import {
   ElButton,
   ElCard,
@@ -16,12 +17,18 @@ import {
   ElMessage,
   ElOption,
   ElPagination,
+  ElPopconfirm,
   ElSelect,
   ElTable,
   ElTableColumn,
 } from 'element-plus';
 
-import { getAllDevicesApi, updateDeviceApi } from '#/api';
+import {
+  addDeviceApi,
+  deleteDeviceApi,
+  getAllDevicesApi,
+  updateDeviceApi,
+} from '#/api';
 
 const voiceMap: Map<string, string> = new Map([
   ['en_female_amanda_mars_bigtts', 'Amanda'],
@@ -158,6 +165,7 @@ const voiceMap: Map<string, string> = new Map([
 ]);
 
 const deviceInfoForm = reactive({
+  mode: 'edit',
   id: 0,
   create_time: '',
   update_time: '',
@@ -167,21 +175,42 @@ const deviceInfoForm = reactive({
   memory: '',
 });
 
-const onEditSubmit = async () => {
-  if (
-    await updateDeviceApi({
-      id: deviceInfoForm.id,
-      create_time: deviceInfoForm.create_time,
-      update_time: deviceInfoForm.update_time,
+const onDrawerSubmit = async () => {
+  if (deviceInfoForm.mode === 'edit') {
+    if (
+      await updateDeviceApi({
+        id: deviceInfoForm.id,
+        create_time: deviceInfoForm.create_time,
+        update_time: deviceInfoForm.update_time,
+        mac: deviceInfoForm.mac,
+        voice: deviceInfoForm.voice,
+        role: deviceInfoForm.role,
+        memory: deviceInfoForm.memory,
+      })
+    ) {
+      await refreshData();
+      ElMessage.success('更新成功！');
+    } else {
+      ElMessage.error('更新失败！');
+    }
+  } else if (deviceInfoForm.mode === 'add') {
+    const device = await addDeviceApi({
+      id: null,
+      create_time: null,
+      update_time: null,
       mac: deviceInfoForm.mac,
       voice: deviceInfoForm.voice,
       role: deviceInfoForm.role,
       memory: deviceInfoForm.memory,
-    })
-  ) {
-    ElMessage({ message: '更新成功！' });
-    drawerApi.close();
+    });
+    if (device) {
+      await refreshData();
+      ElMessage.success('添加成功！');
+    } else {
+      ElMessage.error('添加失败！');
+    }
   }
+  drawerApi.close();
 };
 
 const tableData = ref<Device[]>([]);
@@ -210,17 +239,37 @@ const handleCurrentChange = (val: number) => {
   refreshData();
 };
 
-const [Drawer, drawerApi] = useVbenDrawer({ onConfirm: onEditSubmit });
+const [Drawer, drawerApi] = useVbenDrawer({ onConfirm: onDrawerSubmit });
 
 const handleEditClick = (row: Device) => {
-  deviceInfoForm.id = row.id;
-  deviceInfoForm.create_time = row.create_time;
-  deviceInfoForm.update_time = row.update_time;
+  deviceInfoForm.mode = 'edit';
+  deviceInfoForm.id = row.id!;
+  deviceInfoForm.create_time = row.create_time!;
+  deviceInfoForm.update_time = row.update_time!;
   deviceInfoForm.mac = row.mac;
   deviceInfoForm.voice = row.voice;
   deviceInfoForm.role = row.role;
   deviceInfoForm.memory = row.memory;
   drawerApi.open();
+};
+
+const handleAddClick = () => {
+  deviceInfoForm.mode = 'add';
+  deviceInfoForm.id = 0;
+  deviceInfoForm.create_time = '';
+  deviceInfoForm.update_time = '';
+  deviceInfoForm.mac = '';
+  deviceInfoForm.voice = '';
+  deviceInfoForm.role = '';
+  deviceInfoForm.memory = '';
+  drawerApi.open();
+};
+
+const handleDeleteClick = async (row: Device) => {
+  if (await deleteDeviceApi(row.id!)) {
+    await refreshData();
+    ElMessage.success('删除成功！');
+  }
 };
 
 onMounted(async () => {
@@ -229,97 +278,119 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Drawer class="w-[600px]" title="编辑设备详情">
-    <ElForm :model="deviceInfoForm" label-width="auto">
-      <ElFormItem label="MAC地址">
-        <ElInput v-model="deviceInfoForm.mac" />
-      </ElFormItem>
-      <ElFormItem label="角色语音">
-        <ElSelect
-          v-model="deviceInfoForm.voice"
-          placeholder="请选择或输入语音"
-          filterable
-        >
-          <ElOption
-            v-for="pair in voiceMap"
-            :key="pair[0]"
-            :label="pair[1]"
-            :value="pair[0]"
-          />
-        </ElSelect>
-      </ElFormItem>
-      <ElFormItem label="角色定义">
-        <ElInput
-          v-model="deviceInfoForm.role"
-          type="textarea"
-          :autosize="{ minRows: 3, maxRows: 10 }"
-        />
-      </ElFormItem>
-      <ElFormItem label="聊天记忆">
-        <ElInput
-          v-model="deviceInfoForm.memory"
-          type="textarea"
-          :autosize="{ minRows: 3, maxRows: 10 }"
-        />
-      </ElFormItem>
-    </ElForm>
-  </Drawer>
-  <Page :auto-content-height="true">
-    <ElCard
-      class="h-full"
-      shadow="never"
-      body-class="flex flex-col justify-between h-full"
+  <div>
+    <Drawer
+      class="w-[600px]"
+      :title="deviceInfoForm.mode === 'edit' ? '编辑设备详情' : '新增设备'"
     >
-      <ElTable :data="tableData" class="flex-grow">
-        <ElTableColumn prop="id" label="ID" width="50" />
-        <ElTableColumn prop="mac" label="Mac" width="180" />
-        <ElTableColumn prop="voice" label="语音类型" width="200">
-          <template #default="scope">
-            {{ voiceMap.get(scope.row.voice) }}
-          </template>
-        </ElTableColumn>
-        <ElTableColumn prop="role" label="角色定义">
-          <template #default="scope">
-            <EllipsisText :line="1" :tooltip-max-width="500">
-              {{ scope.row.role }}
-            </EllipsisText>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn prop="memory" label="聊天记忆">
-          <template #default="scope">
-            <EllipsisText :line="1" :tooltip-max-width="500" expand>
-              {{ scope.row.memory }}
-            </EllipsisText>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn fixed="right" label="操作" width="200">
-          <template #default="scope">
-            <ElButton
-              type="default"
-              size="small"
-              @click="handleEditClick(scope.row)"
-            >
-              编辑
-            </ElButton>
-            <ElButton type="danger" size="small">删除</ElButton>
-          </template>
-        </ElTableColumn>
-      </ElTable>
-      <ElPagination
-        class="mt-5 justify-end"
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        :page-sizes="[10, 20, 50]"
-        :size="size"
-        :disabled="disabled"
-        :background="background"
-        layout="total, sizes, prev, pager, next, jumper"
-        :total="total"
-        @size-change="handleSizeChange"
-        @current-change="handleCurrentChange"
-      />
-    </ElCard>
-  </Page>
+      <ElForm :model="deviceInfoForm" label-width="auto">
+        <ElFormItem label="MAC地址">
+          <ElInput v-model="deviceInfoForm.mac" />
+        </ElFormItem>
+        <ElFormItem label="角色语音">
+          <ElSelect
+            v-model="deviceInfoForm.voice"
+            placeholder="请选择或输入语音"
+            filterable
+          >
+            <ElOption
+              v-for="pair in voiceMap"
+              :key="pair[0]"
+              :label="pair[1]"
+              :value="pair[0]"
+            />
+          </ElSelect>
+        </ElFormItem>
+        <ElFormItem label="角色定义">
+          <ElInput
+            v-model="deviceInfoForm.role"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 10 }"
+          />
+        </ElFormItem>
+        <ElFormItem label="聊天记忆">
+          <ElInput
+            v-model="deviceInfoForm.memory"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 10 }"
+          />
+        </ElFormItem>
+      </ElForm>
+    </Drawer>
+    <Page :auto-content-height="true">
+      <ElCard
+        class="h-full"
+        shadow="never"
+        body-class="flex flex-col justify-between h-full"
+      >
+        <div class="flex h-[48px]">
+          <ElButton type="primary" :icon="Plus" @click="handleAddClick">
+            新增设备
+          </ElButton>
+        </div>
+        <ElTable :data="tableData" class="flex-grow">
+          <ElTableColumn prop="id" label="ID" width="50" />
+          <ElTableColumn prop="mac" label="Mac" width="180" />
+          <ElTableColumn prop="voice" label="语音类型" width="200">
+            <template #default="scope">
+              {{ voiceMap.get(scope.row.voice) }}
+            </template>
+          </ElTableColumn>
+          <ElTableColumn prop="role" label="角色定义">
+            <template #default="scope">
+              <EllipsisText :line="1" :tooltip-max-width="500">
+                {{ scope.row.role }}
+              </EllipsisText>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn prop="memory" label="聊天记忆">
+            <template #default="scope">
+              <EllipsisText :line="1" :tooltip-max-width="500">
+                {{ scope.row.memory }}
+              </EllipsisText>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn fixed="right" label="操作" width="200">
+            <template #default="scope">
+              <ElButton
+                type="primary"
+                size="small"
+                link
+                :icon="Edit"
+                @click="handleEditClick(scope.row)"
+              >
+                编辑
+              </ElButton>
+              <ElPopconfirm
+                title="确定要删除吗？"
+                :icon="Delete"
+                @confirm="handleDeleteClick(scope.row)"
+              >
+                <template #reference>
+                  <ElButton type="danger" size="small" :icon="Delete" link>
+                    删除
+                  </ElButton>
+                </template>
+              </ElPopconfirm>
+            </template>
+          </ElTableColumn>
+        </ElTable>
+        <ElPagination
+          class="mt-5 justify-end"
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50]"
+          :size="size"
+          :disabled="disabled"
+          :background="background"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </ElCard>
+    </Page>
+  </div>
 </template>
 
 <style scoped></style>
