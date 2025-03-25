@@ -10,6 +10,8 @@ export interface Page<T> {
 
 export interface Device {
   id: number;
+  create_time: string;
+  update_time: string;
   mac: string;
   voice: string;
   role: string;
@@ -23,4 +25,8 @@ export async function getAllDevicesApi(page: number, size: number) {
       size,
     },
   });
+}
+
+export async function updateDeviceApi(device: Device) {
+  return requestClient.post<boolean>('/device/update', device);
 }
